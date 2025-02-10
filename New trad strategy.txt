@@ -1,0 +1,79 @@
+//@version=6
+strategy("New Trading Strategy", overlay=true)
+
+// VWAP Calculation
+cumulative_vp = ta.cum(volume * close)
+cumulative_vol = ta.cum(volume)
+vwap = cumulative_vp / cumulative_vol
+plot(vwap, title="VWAP", color=color.blue)
+
+// TWAP Calculation
+twap = ta.sma((high + low + close) / 3, 14)
+plot(twap, title="TWAP", color=color.orange)
+
+// Volatility Breakout
+atr = ta.atr(14)
+bb_upper = ta.sma(close, 20) + 2 * ta.stdev(close, 20)
+bb_lower = ta.sma(close, 20) - 2 * ta.stdev(close, 20)
+volatility_breakout = close > bb_upper
+
+// Pattern Recognition (Basic Example)
+head_shoulders = ta.crossover(close, ta.sma(close, 50))
+triangle_pattern = ta.crossover(ta.sma(close, 10), ta.sma(close, 50))
+pattern_signal = head_shoulders or triangle_pattern
+
+// Volume Confirmation (Require high volume for entry)
+vol_avg = ta.sma(volume, 20)
+high_volume = volume > 1.5 * vol_avg
+
+// Buy/Sell Signal Conditions
+buy_signal = volatility_breakout and pattern_signal and high_volume
+sell_signal = not volatility_breakout and pattern_signal
+
+// Risk Calculator
+risk_perc = 1.0  // Risk per trade in %
+capital = 10000  // Account size
+risk_amount = (risk_perc / 100) * capital
+sl = close - 1.5 * atr
+sl_perc = ((close - sl) / close) * 100
+sl_dollar = sl_perc * (capital / 100)
+tp = close + 2 * atr
+tp_perc = ((tp - close) / close) * 100
+tp_dollar = tp_perc * (capital / 100)
+
+// Track Latest Signal
+var float last_signal_price = na
+var string last_signal_type = ""
+if buy_signal
+    last_signal_price := close
+    last_signal_type := "BUY"
+if sell_signal
+    last_signal_price := close
+    last_signal_type := "SELL"
+
+// Create Risk Table (Only updates on latest signal)
+var table risk_table = table.new(position=position.top_right, columns=2, rows=5, bgcolor=color.white, border_width=2, border_color=color.black)
+if not na(last_signal_price)
+    table.cell(risk_table, 0, 0, "Signal Type", bgcolor=color.white, text_color=color.black)
+    table.cell(risk_table, 1, 0, last_signal_type, bgcolor=color.white, text_color=color.black)
+    table.cell(risk_table, 0, 1, "SL ($)", bgcolor=color.white, text_color=color.red)
+    table.cell(risk_table, 1, 1, str.tostring(sl_dollar, "#.##"), bgcolor=color.white, text_color=color.red)
+    table.cell(risk_table, 0, 2, "SL (%)", bgcolor=color.white, text_color=color.red)
+    table.cell(risk_table, 1, 2, str.tostring(sl_perc, "#.##") + "%", bgcolor=color.white, text_color=color.red)
+    table.cell(risk_table, 0, 3, "TP ($)", bgcolor=color.white, text_color=color.blue)
+    table.cell(risk_table, 1, 3, str.tostring(tp_dollar, "#.##"), bgcolor=color.white, text_color=color.blue)
+    table.cell(risk_table, 0, 4, "TP (%)", bgcolor=color.white, text_color=color.blue)
+    table.cell(risk_table, 1, 4, str.tostring(tp_perc, "#.##") + "%", bgcolor=color.white, text_color=color.blue)
+
+// Plot Buy/Sell Signals with Smaller Labels
+if buy_signal
+    label.new(bar_index, low, text="BUY\n" + str.tostring(close, "#.##"), color=color.green, textcolor=color.black, size=size.small, style=label.style_label_up)
+if sell_signal
+    label.new(bar_index, high, text="SELL\n" + str.tostring(close, "#.##"), color=color.red, textcolor=color.black, size=size.small, style=label.style_label_down)
+
+// Strategy Entry & Exit
+if buy_signal
+    strategy.entry("Long", strategy.long)
+    strategy.exit("TakeProfit", from_entry="Long", stop=sl, limit=tp)
+if sell_signal
+    strategy.close("Long")
